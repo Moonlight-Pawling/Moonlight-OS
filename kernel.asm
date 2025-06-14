@@ -61,10 +61,9 @@ detect_memory:
     push es
     push di
     
-    ; IMPORTANTE: Inicializar contadores de memoria a CERO antes de empezar
+    ; Inicializar contadores y variables
     mov dword [total_mem_low], 0
     mov dword [total_mem_high], 0
-    mov word [mem_entries], 0
     
     ; Configurar buffer en una ubicación segura
     mov ax, 0x0000
@@ -323,18 +322,28 @@ total_mem_high dd 0        ; Variable exportada a C
 section .paging
 align 4096
 pml4:
-    dq pdpt + 0x03
-    times 511 dq 0
+    dq pdpt + 0x03        ; Primera entrada apunta a PDPT con flags Present + R/W
+    times 511 dq 0        ; Resto de entradas vacías
 
 align 4096
 pdpt:
-    dq pd + 0x03
-    times 511 dq 0
+    dq pd + 0x03          ; Primera entrada apunta a PD con flags Present + R/W
+    times 511 dq 0        ; Resto de entradas vacías
 
 align 4096
 pd:
-    dq 0x00000000 + 0x83    ; VOLVER A LA CONFIGURACIÓN ORIGINAL SIMPLE!
-    times 511 dq 0
+    ; Generamos 512 entradas de 2MB = 1GB total
+    ; Primera entrada (crucial - no modificar)
+    dq 0x00000000 + 0x83  ; Primera página de 2MB (0-2MB) con flags Present + R/W + PS(2MB)
+    
+    ; Resto de entradas para completar 1GB (511 entradas adicionales)
+    %assign base 0x00200000  ; Empezar desde 2MB
+    %assign i 1
+    %rep 511                 ; 512 total - 1 ya usado = 511
+        dq base + 0x83       ; Mapear 2MB con flags Present + R/W + PS(2MB)
+        %assign base base+0x200000  ; Incrementar en 2MB para siguiente entrada
+        %assign i i+1
+    %endrep
 
 section .text
 ; ===== FUNCIÓN DE DELAY =====
