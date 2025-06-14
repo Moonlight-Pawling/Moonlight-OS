@@ -4,8 +4,9 @@ section .early16
 ; Exportar variables para que sean accesibles desde C
 global total_mem_high
 global total_mem_low
+global mem_entries       ; También exportamos esta variable
 
-; Cabecera del kernel - permite carga dinámica (solo añadir esto al principio)
+; Cabecera del kernel - permite carga dinámica
 kernel_header:
     dw 64              ; Número de sectores que ocupa el kernel (ajustar durante la compilación)
     dw 0x1234          ; Firma mágica
@@ -40,7 +41,8 @@ start16:
     mov byte [es:11*160], '2'        ; Fila 11, columna 0
     mov byte [es:11*160+1], 0x0A
 
-    ; Añadir detección básica de memoria
+    ; Detectar memoria pero GUARDARLA EN VARIABLES SEGURAS!
+    ; Realizamos la detección ANTES de configurar paginación
     call detect_memory
     
     ; Cargar GDT protegida - FILA 12
@@ -54,11 +56,92 @@ start16:
     mov cr0, eax
     jmp 0x08:protected_mode
 
-; Rutina mínima para detectar memoria
+; Rutina para detectar memoria disponible usando int 0x15, eax=0xE820
 detect_memory:
-    ; Configurar 1GB por defecto (valor seguro)
+    push es
+    push di
+    
+    ; IMPORTANTE: Inicializar contadores de memoria a CERO antes de empezar
+    mov dword [total_mem_low], 0
     mov dword [total_mem_high], 0
-    mov dword [total_mem_low], 0x40000000  ; 1GB
+    mov word [mem_entries], 0
+    
+    ; Configurar buffer en una ubicación segura
+    mov ax, 0x0000
+    mov es, ax
+    mov di, 0x9000       ; Buffer temporal para E820
+    
+    xor ebx, ebx        ; ebx debe ser 0 para comenzar
+    xor bp, bp          ; Contador de entradas
+    mov edx, 0x534D4150 ; 'SMAP' en ASCII
+    mov eax, 0xE820
+    mov [es:di + 20], dword 1   ; Forzar ACPI 3.x entry
+    mov ecx, 24         ; Tamaño del buffer
+    int 0x15
+    jc .error           ; Error si CF está activado
+    
+    mov edx, 0x534D4150 ; Algunas BIOSs pueden destruir edx
+    cmp eax, edx
+    jne .error          ; eax debe ser 'SMAP'
+    
+    test ebx, ebx       ; ebx = 0 significa lista de 1 entrada
+    je .error
+    jmp .start
+    
+.next_entry:
+    mov eax, 0xE820
+    mov [es:di + 20], dword 1
+    mov ecx, 24
+    int 0x15
+    jc .done            ; CF = 1 significa final de lista
+    mov edx, 0x534D4150 ; Restaurar edx
+    
+.start:
+    jcxz .skip_entry    ; Si ecx=0, omitir entrada
+    
+    ; Procesar entrada: comprobar si es memoria utilizable (tipo=1)
+    mov eax, [es:di + 16]   ; Tipo de entrada
+    cmp eax, 1
+    jne .skip_entry
+    
+    ; Es memoria utilizable, sumamos al total
+    mov eax, [es:di + 8]    ; Tamaño (bits bajos)
+    mov ebx, [es:di + 12]   ; Tamaño (bits altos)
+    
+    ; Acumular memoria total
+    add [total_mem_low], eax
+    adc [total_mem_high], ebx
+    
+    inc bp              ; Incrementar contador de entradas
+    
+.skip_entry:
+    test ebx, ebx       ; Si ebx=0, fin de la lista
+    jne .next_entry
+    
+.done:
+    ; Guardar número de entradas
+    mov [mem_entries], bp
+    
+    ; Si no se encontró memoria, usar valor predeterminado
+    mov eax, [total_mem_low]
+    or eax, [total_mem_high]
+    jnz .memory_ok
+    
+    ; Valor predeterminado seguro: 1GB
+    mov dword [total_mem_low], 0x40000000
+    mov dword [total_mem_high], 0
+    
+.memory_ok:
+    pop di
+    pop es
+    ret
+    
+.error:
+    ; En caso de error, usar un valor predeterminado para memoria
+    mov dword [total_mem_high], 0
+    mov dword [total_mem_low], 0x40000000  ; 1GB por defecto
+    pop di
+    pop es
     ret
 
 ; --- PROTECTED MODE ---
@@ -150,7 +233,7 @@ protected_mode:
     mov dword [0xB8000 + 11*160 + 20], 0x0F4D0F4D  ; +20 = columna 10
     call delay_1s
 
-    ; "NN" - FILA 12, COLUMNA 10 - Preparar paginación
+    ; "NN" - FILA 12, COLUMNA 10 - Preparar paginación - CRÍTICO!!!
     or eax, 0x80000001
     mov dword [0xB8000 + 12*160 + 20], 0x0F4E0F4E  ; +20 = columna 10
     call delay_1s
@@ -231,9 +314,10 @@ gdt_descriptor:
 
 kernel_msg db "Saltando al kernel!", 0
 
-; Variables para almacenar información de memoria (añadir esto)
-total_mem_low dd 0           ; Variable exportada a C 
-total_mem_high dd 0          ; Variable exportada a C
+; Variables para almacenar información de memoria
+mem_entries dw 0           ; Número de entradas detectadas
+total_mem_low dd 0         ; Variable exportada a C 
+total_mem_high dd 0        ; Variable exportada a C
 
 ; --- Tablas de paginación con sección dedicada ---
 section .paging
@@ -249,7 +333,7 @@ pdpt:
 
 align 4096
 pd:
-    dq 0x00000000 + 0x83
+    dq 0x00000000 + 0x83    ; VOLVER A LA CONFIGURACIÓN ORIGINAL SIMPLE!
     times 511 dq 0
 
 section .text

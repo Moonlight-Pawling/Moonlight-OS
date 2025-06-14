@@ -85,25 +85,20 @@ void kernel_main() {
     print(0, 5, "Desarrollado por Moonlight-Pawling", 0x0C);
     
     // Mostrar información técnica
-    char mem_str[32];
-    uint64_t memory = detect_memory();
-    uint64_to_hex(memory, mem_str);
-    
-    print(0, 7, "Informacion del Sistema:", 0x0B);
-    print(2, 8, "- Arquitectura: x86_64", 0x07);
-    print(2, 9, "- Memoria detectada: ", 0x07);
-    print(22, 9, mem_str, 0x0E);
-    print(2, 10, "- Paginacion: Activada", 0x07);
-    print(2, 11, "- Modo: Long Mode", 0x07);
-    print(2, 12, "- GDT: Configurada", 0x07);
-    print(2, 13, "- Carga de kernel: Dinamica", 0x0A);
-    
-    // Preparación para sistema de login
-    print(0, 15, "Preparando sistema de usuarios...", 0x0D);
-    print(0, 16, "* IDT: Pendiente", 0x08);
-    print(0, 17, "* Teclado: Pendiente", 0x08);
-    print(0, 18, "* Sistema de Login: Pendiente", 0x08);
-    print(0, 19, "* Shell: Pendiente", 0x08);
+	// Mostrar información técnica
+	char mem_str[32];
+	char mem_friendly[32];
+	uint64_t memory = detect_memory();
+	uint64_to_hex(memory, mem_str);
+	format_memory_size(memory, mem_friendly);
+
+	print(0, 7, "Informacion del Sistema:", 0x0B);
+	print(2, 8, "- Arquitectura: x86_64", 0x07);
+	print(2, 9, "- Memoria detectada: ", 0x07);
+	print(22, 9, mem_str, 0x0E);
+	print(41, 9, "(", 0x07);
+	print(42, 9, mem_friendly, 0x0E);
+	print(42 + 8, 9, ")", 0x07);
     
     // Status bar
     print(0, 21, "Estado: Sistema base funcionando - Listo para expansiones", 0x0A);
@@ -134,5 +129,61 @@ void kernel_main() {
         if (counter % 50 == 0) {
             print(0, 22, "Sistema activo y estable", 0x0A);
         }
+    }
+}
+
+void format_memory_size(uint64_t bytes, char* buffer) {
+    if (bytes >= (1ULL << 30)) {  // >= 1GB
+        uint64_t gb = bytes / (1ULL << 30);
+        uint64_t decimal = (bytes % (1ULL << 30)) / ((1ULL << 30) / 10);
+        
+        char gb_str[16];
+        uint64_to_dec(gb, gb_str);
+        
+        char decimal_str[4] = "0";
+        if (decimal > 0) {
+            uint64_to_dec(decimal, decimal_str);
+        }
+        
+        int i = 0;
+        while (gb_str[i]) {
+            buffer[i] = gb_str[i];
+            i++;
+        }
+        
+        if (decimal > 0) {
+            buffer[i++] = '.';
+            buffer[i++] = decimal_str[0];
+        }
+        
+        buffer[i++] = ' ';
+        buffer[i++] = 'G';
+        buffer[i++] = 'B';
+        buffer[i] = '\0';
+    } 
+    else if (bytes >= (1ULL << 20)) {
+        uint64_t mb = bytes / (1ULL << 20);
+        char mb_str[16];
+        uint64_to_dec(mb, mb_str);
+        
+        int i = 0;
+        while (mb_str[i]) {
+            buffer[i] = mb_str[i];
+            i++;
+        }
+        
+        buffer[i++] = ' ';
+        buffer[i++] = 'M';
+        buffer[i++] = 'B';
+        buffer[i] = '\0';
+    }
+    else {
+        uint64_to_dec(bytes / 1024, buffer);
+        int i = 0;
+        while (buffer[i]) i++;
+        buffer[i++] = ' ';
+        buffer[i++] = 'K';
+        buffer[i++] = 'B';
+        buffer[i] = '\0';
     }
 }
