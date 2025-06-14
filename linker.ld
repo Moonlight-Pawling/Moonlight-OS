@@ -1,15 +1,13 @@
+OUTPUT_FORMAT(elf64-x86-64)
 ENTRY(start16)
 
-SECTIONS
-{
-    . = 0x8000;
+SECTIONS {
+    . = 0x10000;
     
-    /* La cabecera del kernel debe ser lo primero */
-    .header : {
+    .early16 : {
         *(.early16)
     }
     
-    /* Resto del kernel */
     .text : {
         *(.text)
     }
@@ -18,21 +16,15 @@ SECTIONS
         *(.data)
     }
     
-    .paging : {
+    .paging : ALIGN(4096) {
         *(.paging)
-    }
-    
-    .bss : {
-        *(.bss)
     }
     
     .rodata : {
         *(.rodata)
     }
     
-    /DISCARD/ : {
-        *(.comment)
-        *(.note*)
-        *(.eh_frame*)
+    .bss : {
+        *(.bss)
     }
 }

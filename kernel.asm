@@ -321,6 +321,12 @@ total_mem_high dd 0        ; Variable exportada a C
 ; --- Tablas de paginación con sección dedicada ---
 section .paging
 align 4096
+
+; Variable para que C pueda acceder a la tabla PML4
+global current_pml4
+current_pml4:
+    dd pml4  ; dirección de pml4
+
 pml4:
     dq pdpt + 0x03        ; Primera entrada apunta a PDPT con flags Present + R/W
     times 511 dq 0        ; Resto de entradas vacías

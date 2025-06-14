@@ -11,7 +11,7 @@ if [[ "$choice" =~ ^[Yy]$ ]]; then
     mkdir -p "$backup_dir"
     
     echo "Guardando backup en $backup_dir..."
-    cp bootloader.asm kernel.asm kernel.c linker.ld build.sh \
+    cp bootloader.asm kernel.asm kernel.c memory_manager.c process.c memory_process.h linker.ld build.sh \
        "$backup_dir/" 2>/dev/null || true
     
     cp *.bin *.o *.elf hdd.img "$backup_dir/" 2>/dev/null || true
@@ -19,15 +19,23 @@ fi
 
 # Limpiar builds anteriores
 rm -f bootloader.bin kernel_trampoline.o kernel.elf kernel.o \
-      kernel.bin hdd.img
+      memory_manager.o process.o kernel.bin hdd.img
 
 echo "Compilando bootloader..."
 nasm -f bin bootloader.asm -o bootloader.bin
 
 echo "Compilando kernel 64-bit..."
 nasm -f elf64 kernel.asm -o kernel_trampoline.o
+
+# Compilar los archivos C
+echo "Compilando archivos C..."
 x86_64-elf-gcc -m64 -ffreestanding -mcmodel=kernel -c kernel.c -o kernel.o
-x86_64-elf-ld -nostdlib -T linker.ld kernel_trampoline.o kernel.o -o kernel.elf
+x86_64-elf-gcc -m64 -ffreestanding -mcmodel=kernel -c memory_manager.c -o memory_manager.o
+x86_64-elf-gcc -m64 -ffreestanding -mcmodel=kernel -c process.c -o process.o
+
+# Enlazar todos los objetos
+echo "Enlazando objetos..."
+x86_64-elf-ld -nostdlib -T linker.ld kernel_trampoline.o kernel.o memory_manager.o process.o -o kernel.elf
 x86_64-elf-objcopy -O binary kernel.elf kernel.bin
 
 # Calcular tamaño del kernel en sectores (512 bytes) y actualizar la cabecera

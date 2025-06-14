@@ -1,70 +1,69 @@
-// Kernel en modo largo (64 bits) - MoonlightOS
-#include <stdint.h>
+// Añadir al principio del archivo kernel.c
 #include "memory_process.h"
 
-// Define un puntero a la memoria de video
-volatile uint16_t* video = (volatile uint16_t*)0xB8000;
-
-// Variables externas desde kernel.asm 
+// Variables externas para la detección de memoria
 extern uint32_t total_mem_low;
 extern uint32_t total_mem_high;
 
+// Añadir después de las declaraciones existentes
 void format_memory_size(uint64_t bytes, char* buffer);
 uint64_t detect_memory();
 
-// Limpia la pantalla completa
-void clear_screen(uint8_t color_attr) {
-    uint16_t blank = ((uint16_t)color_attr << 8) | 0x20;
-    for (int i = 0; i < 2000; i++) {
-        video[i] = blank;
+// Esta función convierte el tamaño de memoria en un formato legible
+void format_memory_size(uint64_t bytes, char* buffer) {
+    if (bytes >= (1ULL << 30)) {  // >= 1GB
+        uint64_t gb = bytes / (1ULL << 30);
+        uint64_t decimal = (bytes % (1ULL << 30)) / ((1ULL << 30) / 10);
+        
+        char gb_str[16];
+        uint64_to_dec(gb, gb_str);
+        
+        char decimal_str[4] = "0";
+        if (decimal > 0) {
+            uint64_to_dec(decimal, decimal_str);
+        }
+        
+        int i = 0;
+        while (gb_str[i]) {
+            buffer[i] = gb_str[i];
+            i++;
+        }
+        
+        if (decimal > 0) {
+            buffer[i++] = '.';
+            buffer[i++] = decimal_str[0];
+        }
+        
+        buffer[i++] = ' ';
+        buffer[i++] = 'G';
+        buffer[i++] = 'B';
+        buffer[i] = '\0';
+    } 
+    else if (bytes >= (1ULL << 20)) {  // >= 1MB
+        uint64_t mb = bytes / (1ULL << 20);
+        char mb_str[16];
+        uint64_to_dec(mb, mb_str);
+        
+        int i = 0;
+        while (mb_str[i]) {
+            buffer[i] = mb_str[i];
+            i++;
+        }
+        
+        buffer[i++] = ' ';
+        buffer[i++] = 'M';
+        buffer[i++] = 'B';
+        buffer[i] = '\0';
     }
-}
-
-// Escribe un carácter en la memoria de video
-void putchar(int x, int y, char c, uint8_t color) {
-    const int index = y * 80 + x;
-    video[index] = ((uint16_t)color << 8) | c;
-}
-
-// Escribe una cadena en pantalla
-void print(int x, int y, const char* str, uint8_t color) {
-    for (int i = 0; str[i]; i++) {
-        putchar(x + i, y, str[i], color);
+    else {
+        uint64_to_dec(bytes / 1024, buffer);
+        int i = 0;
+        while (buffer[i]) i++;
+        buffer[i++] = ' ';
+        buffer[i++] = 'K';
+        buffer[i++] = 'B';
+        buffer[i] = '\0';
     }
-}
-
-// Función para convertir número a string hexadecimal
-void uint64_to_hex(uint64_t value, char* buffer) {
-    const char hex_chars[] = "0123456789ABCDEF";
-    buffer[0] = '0';
-    buffer[1] = 'x';
-    
-    for (int i = 15; i >= 0; i--) {
-        buffer[2 + (15-i)] = hex_chars[(value >> (i * 4)) & 0xF];
-    }
-    buffer[18] = '\0';
-}
-
-// Función para convertir número a string decimal
-void uint64_to_dec(uint64_t value, char* buffer) {
-    if (value == 0) {
-        buffer[0] = '0';
-        buffer[1] = '\0';
-        return;
-    }
-    
-    char temp[32];
-    int i = 0;
-    
-    while (value > 0) {
-        temp[i++] = '0' + (value % 10);
-        value /= 10;
-    }
-    
-    for (int j = 0; j < i; j++) {
-        buffer[j] = temp[i - 1 - j];
-    }
-    buffer[i] = '\0';
 }
 
 // Esta función devuelve la memoria total detectada
@@ -74,17 +73,16 @@ uint64_t detect_memory() {
     return memory_size;
 }
 
-// Punto de entrada del kernel 64-bit
+// Modificar la función kernel_main() para incluir la inicialización
 void kernel_main() {
-    // Limpiar la pantalla
-    clear_screen(0x07);
+    // Código existente para limpiar pantalla...
+    clear_screen();
     
-    // Header principal
-    print(0, 0, "===============================================================================", 0x0F);
-    print(0, 1, "                        MoonlightOS - Modo Largo (64-bit)", 0x0F);
-    print(0, 2, "===============================================================================", 0x0F);
+    // Mostrar mensaje de bienvenida
+    print(0, 0, "MoonlightOS v1.0", 0x0A);
+    print(0, 1, "==================", 0x0A);
     
-// Inicializar subsistemas
+    // Inicializar subsistemas
     init_memory();    // Inicializar el gestor de memoria
     init_processes(); // Inicializar el gestor de procesos
     
@@ -156,62 +154,5 @@ void kernel_main() {
     // Por ahora, simplemente hacemos un bucle infinito
     while (1) {
         // Bucle infinito al final
-    }
-}
-
-// Esta función convierte el tamaño de memoria en un formato legible
-void format_memory_size(uint64_t bytes, char* buffer) {
-    if (bytes >= (1ULL << 30)) {  // >= 1GB
-        uint64_t gb = bytes / (1ULL << 30);
-        uint64_t decimal = (bytes % (1ULL << 30)) / ((1ULL << 30) / 10);
-        
-        char gb_str[16];
-        uint64_to_dec(gb, gb_str);
-        
-        char decimal_str[4] = "0";
-        if (decimal > 0) {
-            uint64_to_dec(decimal, decimal_str);
-        }
-        
-        int i = 0;
-        while (gb_str[i]) {
-            buffer[i] = gb_str[i];
-            i++;
-        }
-        
-        if (decimal > 0) {
-            buffer[i++] = '.';
-            buffer[i++] = decimal_str[0];
-        }
-        
-        buffer[i++] = ' ';
-        buffer[i++] = 'G';
-        buffer[i++] = 'B';
-        buffer[i] = '\0';
-    } 
-    else if (bytes >= (1ULL << 20)) {  // >= 1MB
-        uint64_t mb = bytes / (1ULL << 20);
-        char mb_str[16];
-        uint64_to_dec(mb, mb_str);
-        
-        int i = 0;
-        while (mb_str[i]) {
-            buffer[i] = mb_str[i];
-            i++;
-        }
-        
-        buffer[i++] = ' ';
-        buffer[i++] = 'M';
-        buffer[i++] = 'B';
-        buffer[i] = '\0';
-    }
-    else {
-        uint64_to_dec(bytes / 1024, buffer);
-        int i = 0;
-        while (buffer[i]) i++;
-        buffer[i++] = ' ';
-        buffer[i++] = 'K';
-        buffer[i++] = 'B';
-        buffer[i] = '\0';
     }
 }
